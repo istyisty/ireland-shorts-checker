@@ -62,7 +62,33 @@ function populateCountySelector() {
   countySelectEl.innerHTML = COUNTY_COORDS.map(
     (county) => `<option value="${county.name}">${county.name}</option>`
   ).join("");
-  countySelectEl.value = "Dublin";
+}
+
+function getCountyFromQueryParam() {
+  const params = new URLSearchParams(window.location.search);
+  const countyParam = params.get("county");
+  if (!countyParam) {
+    return null;
+  }
+
+  const decodedCounty = decodeURIComponent(countyParam).trim().toLowerCase();
+  return (
+    COUNTY_COORDS.find((county) => county.name.toLowerCase() === decodedCounty) ||
+    null
+  );
+}
+
+function syncCountyQueryParam(countyName) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("county", countyName);
+  const newUrl = `${window.location.pathname}?${params.toString()}`;
+  window.history.replaceState({}, "", newUrl);
+}
+
+function initializeSelectedCounty() {
+  const countyFromQuery = getCountyFromQueryParam();
+  countySelectEl.value = countyFromQuery ? countyFromQuery.name : "Dublin";
+  syncCountyQueryParam(countySelectEl.value);
 }
 
 function setScenarioTheme(wearShorts) {
@@ -94,6 +120,7 @@ async function updateWeather() {
     statusEl.textContent = "County not found";
     return;
   }
+  syncCountyQueryParam(selectedCounty.name);
 
   const endpoint =
     "https://api.open-meteo.com/v1/forecast" +
@@ -138,6 +165,7 @@ async function updateWeather() {
 }
 
 populateCountySelector();
+initializeSelectedCounty();
 refreshBtn.addEventListener("click", updateWeather);
 countySelectEl.addEventListener("change", updateWeather);
 updateWeather();
