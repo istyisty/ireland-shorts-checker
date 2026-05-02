@@ -1,6 +1,6 @@
-# Can I Wear Shorts in Ireland?
+# Should I Wear Shorts Today?
 
-A simple single-page web app that checks the current temperature in Dublin (used as an Ireland reference point) and tells users if it is shorts weather.
+Checks the current temperature across Ireland and determines if it is shorts weather.
 
 ## Run locally
 
