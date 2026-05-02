@@ -110,13 +110,17 @@ async function updateWeather() {
     const data = await response.json();
     const current = data.current;
 
-    if (!current || typeof current.temperature_2m !== "number") {
+    if (
+      !current ||
+      typeof current.temperature_2m !== "number" ||
+      typeof current.apparent_temperature !== "number"
+    ) {
       throw new Error("Unexpected weather response format.");
     }
 
     const tempC = current.temperature_2m;
     const feelsLike = current.apparent_temperature;
-    const verdict = pickShortsMessage(tempC);
+    const verdict = pickShortsMessage(feelsLike);
 
     setScenarioTheme(verdict.wearShorts);
     statusEl.textContent = verdict.answer;
