@@ -71,7 +71,7 @@ function getCountyFromQueryParam() {
     return null;
   }
 
-  const decodedCounty = decodeURIComponent(countyParam).trim().toLowerCase();
+  const decodedCounty = countyParam.trim().toLowerCase();
   return (
     COUNTY_COORDS.find((county) => county.name.toLowerCase() === decodedCounty) ||
     null
@@ -81,7 +81,8 @@ function getCountyFromQueryParam() {
 function syncCountyQueryParam(countyName) {
   const params = new URLSearchParams(window.location.search);
   params.set("county", countyName);
-  const newUrl = `${window.location.pathname}?${params.toString()}`;
+  const hash = window.location.hash || "";
+  const newUrl = `${window.location.pathname}?${params.toString()}${hash}`;
   window.history.replaceState({}, "", newUrl);
 }
 
@@ -126,6 +127,8 @@ async function updateWeather() {
     "https://api.open-meteo.com/v1/forecast" +
     `?latitude=${selectedCounty.lat}&longitude=${selectedCounty.lon}` +
     "&current=temperature_2m,apparent_temperature,weather_code" +
+    "&daily=apparent_temperature_max" +
+    "&forecast_days=1" +
     "&timezone=auto";
 
   try {
@@ -137,17 +140,17 @@ async function updateWeather() {
     const data = await response.json();
     const current = data.current;
 
-    if (
-      !current ||
-      typeof current.temperature_2m !== "number" ||
-      typeof current.apparent_temperature !== "number"
-    ) {
+    const maxFeelsLikeToday = data?.daily?.apparent_temperature_max?.[0];
+
+    if (!current || typeof current.temperature_2m !== "number") {
       throw new Error("Unexpected weather response format.");
     }
 
     const tempC = current.temperature_2m;
     const feelsLike = current.apparent_temperature;
-    const verdict = pickShortsMessage(feelsLike);
+    const decisionFeelsLike =
+      typeof maxFeelsLikeToday === "number" ? maxFeelsLikeToday : feelsLike;
+    const verdict = pickShortsMessage(decisionFeelsLike);
 
     setScenarioTheme(verdict.wearShorts);
     statusEl.textContent = verdict.answer;
@@ -155,7 +158,9 @@ async function updateWeather() {
     tempEl.textContent = `${tempC.toFixed(1)}°C in ${selectedCounty.name}`;
     detailsEl.textContent = `Feels like ${feelsLike.toFixed(
       1
-    )}°C. ${verdict.details}`;
+    )}°C now. Daily max feels like ${decisionFeelsLike.toFixed(1)}°C. ${
+      verdict.details
+    }`;
   } catch (error) {
     setScenarioTheme(false);
     statusEl.textContent = "Weather unavailable";
