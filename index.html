@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Can I Wear Shorts in Ireland?</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Can I wear shorts today?</h1>
+      <p class="subtitle">Choose your county and check the live temperature.</p>
+
+      <section class="card" aria-live="polite">
+        <div class="controls">
+          <label for="countySelect">County</label>
+          <select id="countySelect"></select>
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+
+        <div id="verdictArt" class="verdict-art" aria-hidden="true"></div>
+        <p id="status">Checking the weather...</p>
+        <p id="temperature" class="temperature"></p>
+        <p id="details" class="details"></p>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
