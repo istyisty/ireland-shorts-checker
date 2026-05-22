@@ -7,7 +7,7 @@ Checks the current temperature across Ireland and determines if it is shorts wea
 Because the app calls a public weather API from the browser, serve it with a local web server:
 
 ```bash
-cd /Users/ivanstynes/Projects
+cd ireland-shorts-checker
 python3 -m http.server 8080
 ```
 

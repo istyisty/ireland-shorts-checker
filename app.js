@@ -4,8 +4,13 @@ const detailsEl = document.getElementById("details");
 const refreshBtn = document.getElementById("refreshBtn");
 const countySelectEl = document.getElementById("countySelect");
 const verdictArtEl = document.getElementById("verdictArt");
+const lastUpdatedEl = document.getElementById("lastUpdated");
+const infoBtnEl = document.getElementById("infoBtn");
+const infoTooltipEl = document.getElementById("infoTooltip");
+const infoTooltipTextEl = document.getElementById("infoTooltipText");
 
 const NO_THRESHOLD_C = 10;
+const WIND_WARNING_KMH = 40;
 const YES_IMAGE = "./assets/yes_shorts.png";
 const NO_IMAGE = "./assets/no_shorts.png";
 
@@ -44,18 +49,52 @@ const COUNTY_COORDS = [
   { name: "Wicklow", lat: 52.9864, lon: -6.3672 },
 ];
 
-function pickShortsMessage(tempC) {
-  return tempC < NO_THRESHOLD_C
-    ? {
-        answer: "NO",
-        details: "Too chilly for shorts.",
-        wearShorts: false,
-      }
-    : {
-        answer: "YES",
-        details: "Warm enough for shorts.",
-        wearShorts: true,
-      };
+// WMO weather codes >= 51 indicate precipitation (drizzle, rain, snow, showers, thunderstorm)
+function isPrecipitation(weatherCode) {
+  return typeof weatherCode === "number" && weatherCode >= 51;
+}
+
+function pickShortsMessage(feelsLikeC, rainy, windSpeedKmh) {
+  if (feelsLikeC < NO_THRESHOLD_C) {
+    return { answer: "NO", details: "Too chilly for shorts.", wearShorts: false };
+  }
+  const qualifiers = [];
+  if (rainy) qualifiers.push("it's going to rain");
+  if (typeof windSpeedKmh === "number" && windSpeedKmh >= WIND_WARNING_KMH) {
+    qualifiers.push("it's very windy");
+  }
+  const suffix = qualifiers.length > 0 ? `, but ${qualifiers.join(" and ")}` : "";
+  return {
+    answer: "YES",
+    details: `Warm enough for shorts${suffix}.`,
+    wearShorts: true,
+  };
+}
+
+function buildVerdictExplanation(feelsLikeC, rainy, windSpeedKmh) {
+  const precipText = rainy ? "precipitation forecast" : "no precipitation forecast";
+  const windText =
+    typeof windSpeedKmh === "number"
+      ? `wind speed ${Math.round(windSpeedKmh)} km/h`
+      : "wind speed unavailable";
+  return `Verdict based on: feels-like max of ${feelsLikeC.toFixed(1)}°C (threshold: ${NO_THRESHOLD_C}°C), ${precipText}, ${windText}.`;
+}
+
+function updateOGTags(countyName, verdict, feelsLikeC) {
+  const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "");
+  const imageFile = verdict.wearShorts ? "yes_shorts.png" : "no_shorts.png";
+  document
+    .querySelector('meta[property="og:title"]')
+    .setAttribute("content", `Should I wear shorts in ${countyName} today? ${verdict.answer}`);
+  document
+    .querySelector('meta[property="og:description"]')
+    .setAttribute("content", `Feels like ${feelsLikeC.toFixed(1)}°C. ${verdict.details}`);
+  document
+    .querySelector('meta[property="og:image"]')
+    .setAttribute("content", `${base}/assets/${imageFile}`);
+  document
+    .querySelector('meta[property="og:url"]')
+    .setAttribute("content", window.location.href);
 }
 
 function populateCountySelector() {
@@ -67,14 +106,10 @@ function populateCountySelector() {
 function getCountyFromQueryParam() {
   const params = new URLSearchParams(window.location.search);
   const countyParam = params.get("county");
-  if (!countyParam) {
-    return null;
-  }
-
+  if (!countyParam) return null;
   const decodedCounty = countyParam.trim().toLowerCase();
   return (
-    COUNTY_COORDS.find((county) => county.name.toLowerCase() === decodedCounty) ||
-    null
+    COUNTY_COORDS.find((county) => county.name.toLowerCase() === decodedCounty) || null
   );
 }
 
@@ -113,6 +148,9 @@ async function updateWeather() {
   tempEl.textContent = "";
   detailsEl.textContent = "";
   verdictArtEl.innerHTML = "";
+  infoBtnEl.hidden = true;
+  infoTooltipEl.hidden = true;
+  infoBtnEl.setAttribute("aria-expanded", "false");
 
   const selectedCounty = COUNTY_COORDS.find(
     (county) => county.name === countySelectEl.value
@@ -126,21 +164,19 @@ async function updateWeather() {
   const endpoint =
     "https://api.open-meteo.com/v1/forecast" +
     `?latitude=${selectedCounty.lat}&longitude=${selectedCounty.lon}` +
-    "&current=temperature_2m,apparent_temperature,weather_code" +
-    "&daily=apparent_temperature_max" +
+    "&current=temperature_2m,apparent_temperature" +
+    "&daily=apparent_temperature_max,weather_code,wind_speed_10m_max" +
     "&forecast_days=1" +
     "&timezone=auto";
 
   try {
     const response = await fetch(endpoint);
     if (!response.ok) {
-      throw new Error("Could not fetch weather data.");
+      throw new Error(`API responded with status ${response.status}`);
     }
 
     const data = await response.json();
     const current = data.current;
-
-    const maxFeelsLikeToday = data?.daily?.apparent_temperature_max?.[0];
 
     if (!current || typeof current.temperature_2m !== "number") {
       throw new Error("Unexpected weather response format.");
@@ -148,29 +184,55 @@ async function updateWeather() {
 
     const tempC = current.temperature_2m;
     const feelsLike = current.apparent_temperature;
+    const maxFeelsLikeToday = data?.daily?.apparent_temperature_max?.[0];
+    const dailyWeatherCode = data?.daily?.weather_code?.[0];
+    const windSpeedMax = data?.daily?.wind_speed_10m_max?.[0] ?? null;
+
     const decisionFeelsLike =
       typeof maxFeelsLikeToday === "number" ? maxFeelsLikeToday : feelsLike;
-    const verdict = pickShortsMessage(decisionFeelsLike);
+    const rainy = isPrecipitation(dailyWeatherCode);
+    const verdict = pickShortsMessage(decisionFeelsLike, rainy, windSpeedMax);
 
     setScenarioTheme(verdict.wearShorts);
     statusEl.textContent = verdict.answer;
     verdictArtEl.innerHTML = buildCharacterPairMarkup(verdict.wearShorts);
     tempEl.textContent = `${tempC.toFixed(1)}°C in ${selectedCounty.name}`;
-    detailsEl.textContent = `Feels like ${feelsLike.toFixed(
-      1
-    )}°C now. Daily max feels like ${decisionFeelsLike.toFixed(1)}°C. ${
-      verdict.details
-    }`;
+
+    const windDisplay =
+      typeof windSpeedMax === "number" ? ` Wind: ${Math.round(windSpeedMax)} km/h.` : "";
+    detailsEl.textContent = `Feels like ${feelsLike.toFixed(1)}°C now. Daily max feels like ${decisionFeelsLike.toFixed(1)}°C.${windDisplay} ${verdict.details}`;
+
+    infoTooltipTextEl.textContent = buildVerdictExplanation(decisionFeelsLike, rainy, windSpeedMax);
+    infoBtnEl.hidden = false;
+
+    updateOGTags(selectedCounty.name, verdict, decisionFeelsLike);
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" });
+    lastUpdatedEl.textContent = `Last updated at ${timeStr}`;
   } catch (error) {
+    console.error(error);
     setScenarioTheme(false);
     statusEl.textContent = "Weather unavailable";
     verdictArtEl.innerHTML = buildCharacterPairMarkup(false);
-    detailsEl.textContent = "Try again in a moment.";
+    if (!navigator.onLine) {
+      detailsEl.textContent = "You appear to be offline. Check your connection and try again.";
+    } else {
+      detailsEl.textContent = "Could not load weather data. The API may be temporarily unavailable.";
+    }
   }
 }
+
+infoBtnEl.addEventListener("click", () => {
+  const nowHidden = !infoTooltipEl.hidden;
+  infoTooltipEl.hidden = nowHidden;
+  infoBtnEl.setAttribute("aria-expanded", String(!nowHidden));
+});
 
 populateCountySelector();
 initializeSelectedCounty();
 refreshBtn.addEventListener("click", updateWeather);
 countySelectEl.addEventListener("change", updateWeather);
 updateWeather();
+
+setInterval(updateWeather, 10 * 60 * 1000);
